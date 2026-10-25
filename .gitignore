@@ -1,2 +1,18 @@
 **/__pycache__/**
 card.svg
+player_data.json
+.venv/
+.env
+.env.*
+!.env.example
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+/output/
+
+# Keep local credentials, private-key material and diagnostic output out of Git.
+*.pem
+*.key
+*.p12
+*.pfx
+*.log

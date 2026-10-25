@@ -55,6 +55,14 @@ class CardTests(unittest.TestCase):
                 self.assertIn("ctf_explorer", card)
                 self.assertNotIn("{username}", card)
 
+    def test_bundled_preview_uses_the_fictional_sample(self):
+        card = (gen.ROOT / "card.svg").read_text(encoding="utf-8")
+        root = ET.fromstring(card)
+        visible = " ".join(root.itertext())
+        self.assertIn(self.player["nickname"], visible)
+        self.assertNotIn(gen.resolve_fullname(self.player), visible)
+        self.assertFalse((gen.ROOT / "player_data.json").exists())
+
     def test_remote_text_cannot_inject_svg(self):
         data = gen.summarize_player(self.player, self.scoreboard)
         data["username"] = '<script>alert("hello")</script> & a "quote"'
