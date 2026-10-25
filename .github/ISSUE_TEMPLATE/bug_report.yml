@@ -1,0 +1,23 @@
+name: Bug report
+description: Report a reproducible renderer or workflow problem using fictional data.
+body:
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What happened, and how can we reproduce it?
+      description: Include the command, expected result and actual result. Try --sample first.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Python version, operating system, style and commit
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output or fictional sample
+      description: Never include OC_TOKEN, account credentials, raw API responses or real personal data.
+      render: text

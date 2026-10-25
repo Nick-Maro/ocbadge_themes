@@ -1,0 +1,24 @@
+name: Theme proposal
+description: Suggest a visual style or share a theme preview.
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should the theme look like?
+      description: Describe the palette, text treatment and whether it needs a category chart.
+    validations:
+      required: true
+  - type: textarea
+    id: preview
+    attributes:
+      label: Preview and readability
+      description: Link a preview rendered with --sample if you have one. Explain how text stays readable at profile-card size.
+  - type: checkboxes
+    id: content
+    attributes:
+      label: Contribution checklist
+      options:
+        - label: Any preview uses fictional data and contains no token or personal profile information.
+          required: true
+        - label: I will identify the source and reuse permissions of any added artwork or fonts.
+          required: true

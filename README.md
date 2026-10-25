@@ -12,7 +12,7 @@
 
 The bundled preview uses fictional sample data, not a real player profile.
 
-[Try a sample](#try-it-without-an-account) · [Automate your card](#keep-your-card-up-to-date) · [Choose a theme](#choose-your-theme)
+[Theme gallery](#choose-your-theme) · [Try it offline](#try-it-without-an-account) · [Embed your card](#embed-it-in-your-profile) · [Contribute a theme](#develop-and-contribute)
 
 </div>
 
@@ -52,6 +52,16 @@ python gen.py hacker --sample --output output/sample.svg
 Open `output/sample.svg` in a browser. Try `default`, `dark` or `white` to see the category chart.
 
 ## Choose your theme
+
+All six previews below come from the real renderer using the same [fictional sample](examples/sample-player.json). Click a card to open its full SVG; no token or account is needed to inspect them.
+
+| Purple neon · `default` | Deep purple · `dark` |
+| :---: | :---: |
+| [![Default theme with fictional CTF statistics](examples/previews/default.svg)](examples/previews/default.svg) | [![Dark theme with fictional CTF statistics](examples/previews/dark.svg)](examples/previews/dark.svg) |
+| **Light lavender · `white`** | **Red accents · `darkRed`** |
+| [![White theme with fictional CTF statistics](examples/previews/white.svg)](examples/previews/white.svg) | [![Dark red theme with fictional CTF statistics](examples/previews/darkRed.svg)](examples/previews/darkRed.svg) |
+| **Green terminal · `hacker`** | **Original layout · `oldDefault`** |
+| [![Hacker theme with fictional CTF statistics](examples/previews/hacker.svg)](examples/previews/hacker.svg) | [![Original theme with fictional CTF statistics](examples/previews/oldDefault.svg)](examples/previews/oldDefault.svg) |
 
 | Style | Look | Category chart |
 | --- | --- | --- |
@@ -154,7 +164,9 @@ The main pieces are:
 | `tests/` | Regression tests without account credentials |
 | `.github/workflows/generate-card.yml` | Explicit manual live card generation |
 
-To propose a theme, start from an existing SVG, add its name and optional chart palette to `TEMPLATE_COLOR_PALETTES`, then update the workflow dropdown and theme table. Run the offline tests and include a sample render in your pull request.
+To propose a theme, start from an existing SVG, add its name and optional chart palette to `TEMPLATE_COLOR_PALETTES`, then update the workflow dropdown and theme table. Run the offline tests and include a sample render in your pull request. The [theme proposal form](https://github.com/Nick-Maro/ocbadge_themes/issues/new?template=theme_request.yml) lists the useful details; reproducible bugs have a [separate form](https://github.com/Nick-Maro/ocbadge_themes/issues/new?template=bug_report.yml).
+
+The [preview directory](examples/previews/README.md) documents how to regenerate this gallery. Useful contributions include readable light/dark palettes, accessible text contrast, and small SVG templates that work without external assets. Contributions should use fictional data and preserve upstream credit.
 
 ## Credits and reuse
 
