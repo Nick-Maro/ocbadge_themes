@@ -2,93 +2,74 @@ name: Generate Card
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    paths:
+      - gen.py
+      - requirements.txt
+      - data/**
+      - .github/workflows/generate-card.yml
   workflow_dispatch:
     inputs:
       style:
-        description: 'Card style (default, dark, white, darkRed, hacker, oldDefault)'
-        required: false
-        default: 'default'
+        description: Card style
+        type: choice
+        default: default
+        options: [default, dark, white, darkRed, hacker, oldDefault]
   schedule:
     - cron: '23 23 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: card-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   generate-image:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
-    
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-    
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
-    
-    - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
-    
-    - name: Generate card image
-      run: |
-        # Make sure the OC_TOKEN environment variable is available
-        export OC_TOKEN=${{ secrets.OC_TOKEN }}
-        # Use the style parameter if provided through workflow_dispatch
-        if [ "${{ github.event_name }}" == "workflow_dispatch" ] && [ "${{ github.event.inputs.style }}" != "" ]; then
-          python gen.py ${{ github.event.inputs.style }}
-        else
-          python gen.py
-        fi
-    
-    - name: Upload SVG to GitHub Repo
-      uses: actions/github-script@v5
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          const fs = require('fs');
-          const path = './card.svg';  // Ensure this is the correct path
-          const content = fs.readFileSync(path, { encoding: 'base64' });
-          const owner = process.env.GITHUB_ACTOR;  // GitHub username (owner of the repo)
-          const repo = process.env.GITHUB_REPOSITORY.split('/')[1];  // Repository name
-          const filePath = 'card.svg';
-          
-          try {
-            const { data: existingFile } = await github.rest.repos.getContent({
-              owner,
-              repo,
-              path: filePath
-            });
-            const sha = existingFile.sha;
-            
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Generate card
+        env:
+          OC_TOKEN: ${{ secrets.OC_TOKEN }}
+          CARD_STYLE: ${{ inputs.style || vars.OC_STYLE || 'default' }}
+        run: python gen.py "$CARD_STYLE"
+      - name: Update card only when its contents change
+        uses: actions/github-script@v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+            const branch = context.ref.replace('refs/heads/', '');
+            const content = fs.readFileSync('card.svg').toString('base64');
+            let existing;
+            try {
+              const response = await github.rest.repos.getContent({
+                owner, repo, path: 'card.svg', ref: branch
+              });
+              existing = response.data;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (existing && existing.content.replace(/\s/g, '') === content) {
+              core.info('Card is already up to date.');
+              return;
+            }
             await github.rest.repos.createOrUpdateFileContents({
-              owner,
-              repo,
-              path: filePath,
-              message: 'Upload SVG Card',
-              content,
-              sha,  // Provide the sha here
-              committer: {
-                name: 'GitHub Actions',
-                email: 'actions@github.com'
-              }
+              owner, repo, branch, path: 'card.svg',
+              message: 'chore: update OliCyber profile card',
+              content, ...(existing ? { sha: existing.sha } : {})
             });
-          } catch (error) {
-            await github.rest.repos.createOrUpdateFileContents({
-              owner,
-              repo,
-              path: filePath,
-              message: 'Upload SVG Card',
-              content,
-              committer: {
-                name: 'GitHub Actions',
-                email: 'actions@github.com'
-              }
-            });
-          }
-    
-    - name: Generate Camo URL
-      run: |
-        echo "https://raw.githubusercontent.com/${GITHUB_ACTOR}/${GITHUB_REPOSITORY}/refs/heads/main/card.svg"
+            core.info(`Embed: https://raw.githubusercontent.com/${owner}/${repo}/${branch}/card.svg`);
