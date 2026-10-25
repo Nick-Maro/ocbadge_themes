@@ -104,10 +104,11 @@ JSON export is optional and contains only the displayed public stats. The token,
 1. Fork this repository to your own account.
 2. In your fork, enable **Actions** if GitHub asks.
 3. Go to **Settings → Secrets and variables → Actions → Secrets** and add a repository secret named **`OC_TOKEN`**.
-4. Under **Variables**, optionally add **`OC_STYLE`** with one of the six style names. This is the default for scheduled runs; it falls back to `default`.
-5. Open **Actions → Generate Card → Run workflow**. Choose a style and run it.
+4. Open **Actions → Generate Card → Run workflow**. Choose a style and run it.
 
-The workflow generates `card.svg` and commits it to the selected branch only when its contents change. It also runs daily at **23:23 UTC**; scheduled GitHub Actions can be delayed. The cron schedule does not follow daylight saving time. A manual style choice affects that run; set `OC_STYLE` to make a choice persist for scheduled runs.
+The workflow generates `card.svg` and commits it to the selected branch only when its contents change. **Live card generation requires an explicit manual run.** Pushing source changes runs only the offline tests and does not fetch or publish your profile stats.
+
+If you deliberately want recurring publication, add a `schedule` trigger to your own copy of `.github/workflows/generate-card.yml`. GitHub cron uses UTC and can be delayed. An optional `OC_STYLE` repository variable selects the style for a scheduled run; it falls back to `default`. Enabling that schedule will publish your current nickname and statistics without another prompt.
 
 Only the generation job gets repository write permission. Tokens and style choices enter the shell through environment variables, and an API failure leaves the existing card in place.
 
@@ -151,7 +152,7 @@ The main pieces are:
 | `data/template_*.svg` | Theme templates; braces used as literal text must be doubled |
 | `examples/sample-player.json` | Fictional data for offline previews |
 | `tests/` | Regression tests without account credentials |
-| `.github/workflows/generate-card.yml` | Manual and daily card generation |
+| `.github/workflows/generate-card.yml` | Explicit manual live card generation |
 
 To propose a theme, start from an existing SVG, add its name and optional chart palette to `TEMPLATE_COLOR_PALETTES`, then update the workflow dropdown and theme table. Run the offline tests and include a sample render in your pull request.
 

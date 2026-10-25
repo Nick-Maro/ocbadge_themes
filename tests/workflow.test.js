@@ -10,6 +10,12 @@ const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const execute = new AsyncFunction('require', 'context', 'github', 'core', script);
 const generated = Buffer.from('<svg>sample</svg>');
 
+test('live card publication requires an explicit manual dispatch', () => {
+  const triggers = workflow.split(/\r?\non:\r?\n/)[1].split(/\r?\npermissions:/)[0];
+  assert.match(triggers, /^  workflow_dispatch:/m);
+  assert.doesNotMatch(triggers, /^  (?:push|schedule|pull_request):/m);
+});
+
 async function run(getContent) {
   const writes = [];
   const github = { rest: { repos: {

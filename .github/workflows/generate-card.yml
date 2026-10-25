@@ -1,13 +1,6 @@
 name: Generate Card
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - gen.py
-      - requirements.txt
-      - data/**
-      - .github/workflows/generate-card.yml
   workflow_dispatch:
     inputs:
       style:
@@ -15,9 +8,6 @@ on:
         type: choice
         default: default
         options: [default, dark, white, darkRed, hacker, oldDefault]
-  schedule:
-    - cron: '23 23 * * *'
-
 permissions:
   contents: read
 
