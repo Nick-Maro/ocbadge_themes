@@ -1,0 +1,19 @@
+{
+  "player": {
+    "name": "Sample",
+    "surname": "Player",
+    "nickname": "ctf_explorer",
+    "correctSubmissions": 42,
+    "score": 13370,
+    "categories": {
+      "web": {"solves": 14},
+      "crypto": {"solves": 10},
+      "binary": {"solves": 8},
+      "network": {"solves": 6},
+      "misc": {"solves": 4}
+    }
+  },
+  "scoreboard": [
+    {"displayedName": "Sample Player (ctf_explorer)"}
+  ]
+}

@@ -1,164 +1,176 @@
-import requests
-import os
+"""Render an OliCyber profile as a self-contained SVG card."""
+
+from __future__ import annotations
+
+import argparse
 import base64
-import sys
-import json
 from collections import defaultdict
 import io
-import matplotlib.pyplot as plt
+import json
+import os
+from pathlib import Path
+import sys
+from uuid import UUID
+from xml.sax.saxutils import escape
 
-TOKEN = os.getenv("OC_TOKEN")
-try:
-    assert TOKEN.count("-") == 4 and len(TOKEN) == 36
-except:
-    raise ValueError("Invalid token format")
+import requests
 
 
+ROOT = Path(__file__).resolve().parent
 PLAYER_URL = "https://training.olicyber.it/api/scoreboard/player"
 SCOREBOARD_URL = "https://training.olicyber.it/api/scoreboard"
+REQUEST_TIMEOUT = (5, 30)
 
-if TOKEN is None:
-    raise ValueError("TOKEN environment variable not set")
-
-HEADERS = {
-    "Authorization": f"Token {TOKEN}"
-    }
-
-# color Palettes for Different Templates
-# first color is title color, second is text color, next 5 are for pie chart segments
-#None = No pie chart
+# Title, labels, then chart segments; None means the theme has no chart.
 TEMPLATE_COLOR_PALETTES = {
-    "default": ['#6f2fb7', '#b57edc', '#8432e1', '#6f2fb7', '#a365e9', '#5a2c96', '#3d1e64'],
-    "hacker":None,
-    "dark":['#4a1c7c', '#6a4c93', '#2c1047', '#4a1c7c', '#6a4c93', '#281847', '#1a1a2e'],
-    "darkRed":None,
-    "white":['#6a5acd', '#8a7db0', '#d8d8f0', '#6a5acd', '#8a7db0', '#e6e6fa', '#f5f5ff'],
-    "oldDefault":None,
+    "default": ["#6f2fb7", "#b57edc", "#8432e1", "#6f2fb7", "#a365e9", "#5a2c96", "#3d1e64"],
+    "dark": ["#4a1c7c", "#6a4c93", "#2c1047", "#4a1c7c", "#6a4c93", "#281847", "#1a1a2e"],
+    "white": ["#6a5acd", "#8a7db0", "#d8d8f0", "#6a5acd", "#8a7db0", "#e6e6fa", "#f5f5ff"],
+    "darkRed": None,
+    "hacker": None,
+    "oldDefault": None,
 }
+
+
+def validate_token(token):
+    """Validate credentials at runtime, never as an import side effect."""
+    if not token or not token.strip():
+        raise ValueError("Set OC_TOKEN to your OliCyber training-platform token, or use --sample.")
+    token = token.strip()
+    try:
+        parsed = UUID(token)
+    except (ValueError, AttributeError):
+        raise ValueError("OC_TOKEN must be a UUID in the form xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx.") from None
+    if str(parsed) != token.lower():
+        raise ValueError("OC_TOKEN must use the hyphenated UUID format.")
+    return token
+
+
+def fetch_json(session, url, headers, **kwargs):
+    try:
+        response = session.get(url, headers=headers, timeout=REQUEST_TIMEOUT, **kwargs)
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        status = exc.response.status_code if exc.response is not None else "unknown"
+        if status in (401, 403):
+            raise ValueError("OliCyber rejected OC_TOKEN. Sign in again and update your token.") from None
+        raise ValueError(f"OliCyber returned HTTP {status}; try again later.") from None
+    except requests.RequestException:
+        raise ValueError("Could not reach OliCyber (network error or request timeout); try again later.") from None
+    try:
+        return response.json()
+    except ValueError:
+        raise ValueError("OliCyber returned invalid JSON; try again later.") from None
+
+
+def fetch_profile(token):
+    headers = {"Authorization": f"Token {validate_token(token)}"}
+    with requests.Session() as session:
+        player = fetch_json(session, PLAYER_URL, headers)
+        scoreboard = fetch_json(session, SCOREBOARD_URL, headers, params={"noFreeze": False})
+    return player, scoreboard["scoreboard"]
+
 
 def resolve_fullname(player_data):
     return f'{player_data["name"]} {player_data["surname"]} ({player_data["nickname"]})'
 
-def find_scoreboard_position(player_data):
+
+def find_scoreboard_position(player_data, scoreboard):
     display_name = resolve_fullname(player_data)
-    scoreboard = requests.get(SCOREBOARD_URL, params={"noFreeze": False}, headers=HEADERS).json()["scoreboard"]
-    return next(i for i, player in enumerate(scoreboard) if player["displayedName"] == display_name) + 1
+    return next(
+        (position for position, player in enumerate(scoreboard, start=1)
+         if player.get("displayedName") == display_name),
+        "N/A",
+    )
+
 
 def find_best_category(player_data):
     categories = player_data["categories"]
+    if not categories or not any(value["solves"] for value in categories.values()):
+        return "N/A"
     return max(categories, key=lambda category: categories[category]["solves"]).capitalize()
 
+
+def summarize_player(player, scoreboard):
+    return {
+        "scoreboard_position": find_scoreboard_position(player, scoreboard),
+        "username": player["nickname"],
+        "solved_challenges": player["correctSubmissions"],
+        "score": player["score"],
+        "best_category": find_best_category(player),
+    }
+
+
 def generate_histogram_svg(categories, template="default"):
-    """
-    Generate a pie chart SVG representing challenge distribution across categories.
-    return : Base64 encoded SVG of the pie chart
-    """
-    if not categories:
+    """Return a base64 SVG pie chart, or an empty string for zero solves."""
+    palette = TEMPLATE_COLOR_PALETTES[template]
+    nonzero = {name: solves for name, solves in categories.items() if solves > 0}
+    if palette is None or not nonzero:
         return ""
-    
-    palette = TEMPLATE_COLOR_PALETTES.get(template, TEMPLATE_COLOR_PALETTES["default"])
+
+    # A noninteractive canvas also works in Actions and on headless machines.
+    from matplotlib import rc_context
+    from matplotlib.figure import Figure
+
     title_color, text_color, *chart_colors = palette
-
-    plt.figure(figsize=(6, 3), dpi=100)
-    plt.style.use('default')
-
-    plt.title("Completed Challenges", fontsize=14, color=title_color, fontweight='bold')
-
-    category_names = list(categories.keys())
-    percentages = list(categories.values())
-
-    plt.pie(
-        percentages, 
-        labels=category_names, 
-        colors=chart_colors, 
-        labeldistance=1.1,  # Aumenta la distanza delle etichette per renderle più leggibili
-        wedgeprops={
-            'edgecolor': 'black', 
-            'linewidth': 1, 
-            'antialiased': True
-        },
-        textprops={
-            'color': text_color,  
-            'fontsize': 10, 
-            'fontweight': 'bold'
-        }
+    figure = Figure(figsize=(6, 3), dpi=100)
+    axes = figure.subplots()
+    axes.set_title("Completed Challenges", fontsize=14, color=title_color, fontweight="bold")
+    axes.pie(
+        list(nonzero.values()), labels=list(nonzero), colors=chart_colors,
+        labeldistance=1.1,
+        wedgeprops={"edgecolor": "black", "linewidth": 1, "antialiased": True},
+        textprops={"color": text_color, "fontsize": 10, "fontweight": "bold"},
     )
-
     buffer = io.BytesIO()
-    plt.savefig(buffer, format='svg', bbox_inches='tight', transparent=True)
-    plt.close()
+    # Stable IDs and no timestamp keep the daily workflow from committing noise.
+    with rc_context({"svg.hashsalt": "ocbadge-themes"}):
+        figure.savefig(buffer, format="svg", bbox_inches="tight", transparent=True,
+                       metadata={"Date": None})
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
 
-    svg_data = buffer.getvalue().decode('utf-8')
-    return base64.b64encode(svg_data.encode('utf-8')).decode('utf-8')
+
+def make_card(data, categories, template="default"):
+    if template not in TEMPLATE_COLOR_PALETTES:
+        raise ValueError(f"Unknown theme: {template}. Choose from {', '.join(TEMPLATE_COLOR_PALETTES)}.")
+
+    # Values from the network are text, never SVG markup or attributes.
+    values = {key: escape(str(value), {'"': "&quot;", "'": "&apos;"}) for key, value in data.items()}
+    values["logo"] = base64.b64encode((ROOT / "data" / "logo.svg").read_bytes()).decode("ascii")
+    chart = generate_histogram_svg(categories, template)
+    values["histogram"] = f"data:image/svg+xml;base64,{chart}" if chart else ""
+    source = (ROOT / "data" / f"template_{template}.svg").read_text(encoding="utf-8")
+    return source.format_map(defaultdict(lambda: "N/A", values))
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("style", nargs="?", choices=TEMPLATE_COLOR_PALETTES, default="default")
+    parser.add_argument("--output", type=Path, default=Path("card.svg"), help="SVG destination (default: card.svg)")
+    parser.add_argument("--data-output", type=Path, help="optionally export the displayed public stats as JSON")
+    parser.add_argument("--sample", action="store_true", help="render fictional sample data offline, without OC_TOKEN")
+    args = parser.parse_args(argv)
 
-    user_data = requests.get(PLAYER_URL, headers=HEADERS).json()
+    try:
+        if args.sample:
+            sample = json.loads((ROOT / "examples" / "sample-player.json").read_text(encoding="utf-8"))
+            player, scoreboard = sample["player"], sample["scoreboard"]
+        else:
+            player, scoreboard = fetch_profile(os.getenv("OC_TOKEN"))
+        data = summarize_player(player, scoreboard)
+        categories = {name.capitalize(): value["solves"] for name, value in player["categories"].items()}
+        card = make_card(data, categories, args.style)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(card, encoding="utf-8")
+        if args.data_output:
+            args.data_output.parent.mkdir(parents=True, exist_ok=True)
+            args.data_output.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    print(f"Saved {args.style} card to {args.output}")
+    return 0
 
-    
-    useful_data = {
-        "scoreboard_position": find_scoreboard_position(user_data),
-        "username": user_data["nickname"],
-        "solved_challenges": user_data["correctSubmissions"],
-        "score": user_data["score"],
-        "best_category": find_best_category(user_data),
-    }
-
-    # save the data to a JSON file
-    with open("player_data.json", "w") as json_file:
-        json.dump(useful_data, json_file, indent=4)
-
-   
-    categories = user_data["categories"]
-    category_percentages = {
-        category.capitalize(): (categories[category]["solves"] / user_data["correctSubmissions"] * 100) 
-        for category in categories
-    }
-
-    # generate and save player card
-    def make_card(data, template="default"):
-
-        valid_templates = list(TEMPLATE_COLOR_PALETTES.keys())
-        if template not in valid_templates:
-            raise ValueError(f"Invalid template. Available: {', '.join(valid_templates)}")
-
-        
-        try:
-            with open("data/logo.svg", 'r') as logo_file:
-                logo = logo_file.read()
-        except FileNotFoundError:
-            raise ValueError("Logo file 'data/logo.svg' not found")
-
-        
-        data["logo"] = base64.b64encode(logo.encode()).decode()
-        if TEMPLATE_COLOR_PALETTES[template]!=None:
-            histogram_base64 = generate_histogram_svg(category_percentages, template)
-            if histogram_base64:
-                data["histogram"] = f'data:image/svg+xml;base64,{histogram_base64}'
-            else:
-                data["histogram"] = "" 
-
-        
-        template_filename = f"data/template_{template}.svg"
-        try:
-            with open(template_filename, 'r') as template_file:
-                card_template = template_file.read()
-        except FileNotFoundError:
-            raise ValueError(f"Template file '{template_filename}' not found.")
-
-        # replace placeholders with data
-        card_template = card_template.format_map(defaultdict(lambda: "N/A", data))
-        return card_template
-
-    
-    template_style = sys.argv[1] if len(sys.argv) > 1 and sys.argv[1] in TEMPLATE_COLOR_PALETTES else "default"
-
-    
-    with open("card.svg", "w") as f:
-        f.write(make_card(useful_data, template_style))
-
-    
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
